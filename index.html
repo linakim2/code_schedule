@@ -456,15 +456,15 @@ function renderCalendar(today){
         const sch=getSch(tch,iso);
         if(!base&&!sch) return;
         const hasChange=sch&&(sch.start||sch.end||sch.note);
-        const isVacation=sch&&!sch.start&&!sch.end&&sch.note==='휴무';
+        const isVacation=sch&&!sch.start&&!sch.end&&(sch.note||'').startsWith('휴무');
         const isExtra=!base&&sch&&(sch.start||sch.end); // 기본 출근 아닌 날 출근
         const dotCls=isVacation?'dot-off':isExtra?'dot-extra':hasChange?'dot-change':'dot-base';
         let item=`<div class="cal-work" ${IS_ADMIN?`onclick="openEdit('${iso}','${bw.teacher}')"`:''}>`;
         item+=`<span class="dot ${dotCls}"></span><span class="cal-teacher">${bw.teacher}</span> `;
-        const isOff=sch&&!sch.start&&!sch.end&&(sch.note==='휴무'||(sch.note||'').includes('대체'));
+        const isOff=sch&&!sch.start&&!sch.end&&((sch.note||'').startsWith('휴무')||(sch.note||'').includes('대체'));
         if(isOff){
           if(base) item+=`<span class="cal-strike">${base.start}~${base.end}</span> `;
-          item+=`<span class="cal-change">${sch.note==='휴무'?'휴무':sch.note}</span>`;
+          item+=`<span class="cal-change">${sch.note}</span>`;
         } else if(sch&&(sch.start||sch.end)){
           if(base) item+=`<span class="cal-strike">${base.start}~${base.end}</span> `;
           item+=`<span class="cal-change">${sch.start||'?'}~${sch.end||'?'}</span>`;
@@ -528,15 +528,15 @@ function renderWeekTable(today){
 
 
       const hasChangeW=sch&&(sch.start||sch.end||sch.note);
-      const isVacationW=sch&&!sch.start&&!sch.end&&sch.note==='휴무';
+      const isVacationW=sch&&!sch.start&&!sch.end&&(sch.note||'').startsWith('휴무');
       const isExtraW=!base&&sch&&(sch.start||sch.end);
       const dotW=isVacationW?'dot-off':isExtraW?'dot-extra':hasChangeW?'dot-change':(base?'dot-base':'');
       let inner='<div class="work-content">';
       if(dotW) inner+=`<span class="dot ${dotW}" style="position:absolute;top:6px;left:5px"></span>`;
-      const isOff=sch&&!sch.start&&!sch.end&&(sch.note==='휴무'||(sch.note||'').includes('대체'));
+      const isOff=sch&&!sch.start&&!sch.end&&((sch.note||'').startsWith('휴무')||(sch.note||'').includes('대체'));
       if(isOff){
         if(base) inner+=`<div class="wt-strike">${base.start}~${base.end}</div>`;
-        inner+=`<div class="wt-change">${sch.note==='휴무'?'휴무':sch.note}</div>`;
+        inner+=`<div class="wt-change">${sch.note}</div>`;
       } else if(sch&&(sch.start||sch.end)){
         if(base) inner+=`<div class="wt-strike">${base.start}~${base.end}</div>`;
         inner+=`<div class="wt-change">${sch.start||'?'}~${sch.end||'?'}</div>`;
@@ -674,10 +674,12 @@ function markOff(){
   const date=document.getElementById('edit-date').value;
   let teacher=document.getElementById('edit-teacher').value;
   if(!teacher) teacher=document.getElementById('edit-teacher-sel').value;
+  const memo=document.getElementById('edit-note').value.trim();
+  const note='휴무'+(memo?' · '+memo:'');
   schedule=schedule.filter(s=>!(s.date===date&&s.teacher===teacher));
-  schedule.push({date,teacher,start:'',end:'',note:'휴무'});
+  schedule.push({date,teacher,start:'',end:'',note});
   closeEdit(); render();
-  sheetPost('saveSchedule',{date,teacher,start:'',end:'',note:'휴무'});
+  sheetPost('saveSchedule',{date,teacher,start:'',end:'',note});
 }
 
 function deleteEntry(){
