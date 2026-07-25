@@ -25,6 +25,7 @@ header h1{font-size:16px;font-weight:700}
 .nav-bar{background:var(--w);border-bottom:1px solid var(--bdr);padding:8px 24px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;position:sticky;top:57px;z-index:99}
 .nav-btn{font:inherit;font-size:13px;padding:5px 14px;border:1px solid var(--bdr);border-radius:20px;background:var(--w);cursor:pointer;color:var(--txt2)}
 .nav-btn:hover{background:var(--gray-bg)}
+.nav-btn:disabled{opacity:.3;cursor:not-allowed;background:var(--w)}
 .nav-label{font-size:14px;font-weight:600;min-width:80px;text-align:center}
 .view-toggle{margin-left:auto;display:flex;gap:4px}
 .vt-btn{font:inherit;font-size:12px;padding:4px 12px;border:1px solid var(--bdr);border-radius:16px;background:var(--w);cursor:pointer;color:var(--txt2)}
@@ -142,9 +143,9 @@ td.day-cell:hover .edit-hint{opacity:1}
 </header>
 
 <div class="nav-bar">
-  <button class="nav-btn" onclick="move(-1)">←</button>
+  <button class="nav-btn" id="nav-prev" onclick="move(-1)">←</button>
   <span class="nav-label" id="nav-label"></span>
-  <button class="nav-btn" onclick="move(1)">→</button>
+  <button class="nav-btn" id="nav-next" onclick="move(1)">→</button>
   <button class="today-btn" onclick="goToday()">오늘</button>
   <div class="legend" style="display:flex;gap:10px;align-items:center;font-size:11px;color:var(--txt2)">
     <span><span class="dot dot-base"></span>기본</span>
@@ -320,6 +321,10 @@ async function sheetPost(action, data){
     if(json.data && (json.data.saved||json.data.deleted) && json.data.replaced===undefined && json.data.removed===undefined){
       alert('배포된 Apps Script가 구버전(v2.1 미만)입니다.\n코드 저장만으로는 반영되지 않습니다.\n배포 → 배포 관리 → ✏️ → 버전: "새 버전" → 배포 를 해주세요.');
     }
+    // 삭제인데 시트에서 매칭된 행이 0개면 알림 (덮어쓰기/삭제 실패 진단)
+    if(json.data && json.data.deleted && json.data.removed===0){
+      alert('시트에서 해당 날짜·선생님 행을 찾지 못해 삭제되지 않았습니다.\n(removed: 0) 시트의 날짜 형식이나 선생님 이름(공백 포함)을 확인해주세요.');
+    }
     console.log('[sheetPost]',action,json.data);
     return true;
   }
@@ -404,7 +409,31 @@ function getSch(teacher,dateIso){
   return matches.length?matches[matches.length-1]:null; // 중복 시 최신(마지막) 우선
 }
 
+function updateNavButtons(){
+  const prev=document.getElementById('nav-prev');
+  const next=document.getElementById('nav-next');
+  if(!prev||!next) return;
+  if(IS_ADMIN){ prev.disabled=false; next.disabled=false; return; }
+  const now=new Date();
+  if(viewMode==='month'){
+    const minV=now.getFullYear()*12+now.getMonth()-1;
+    const maxV=now.getFullYear()*12+now.getMonth()+1;
+    const cur=curYear*12+curMonth;
+    prev.disabled=cur<=minV;
+    next.disabled=cur>=maxV;
+  } else {
+    const min=new Date(now.getFullYear(),now.getMonth()-1,1);
+    const max=new Date(now.getFullYear(),now.getMonth()+2,0);
+    const pw=new Date(curWeekStart); pw.setDate(pw.getDate()-7);
+    const pwe=new Date(pw); pwe.setDate(pwe.getDate()+6);
+    prev.disabled=pwe<min;
+    const nw=new Date(curWeekStart); nw.setDate(nw.getDate()+7);
+    next.disabled=nw>max;
+  }
+}
+
 function render(){
+  updateNavButtons();
   const today=isoDate(new Date());
 
   if(viewMode==='month'){
