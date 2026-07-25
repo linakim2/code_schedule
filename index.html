@@ -201,7 +201,7 @@ td.day-cell:hover .edit-hint{opacity:1}
 </div>
 
 <script>
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzeE3xijWrlG5rHo2o7xP8H3hz32WJm38tAhFP1Te0sVex921CBeHP-M6bV60UtoznNiA/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzrU1KTHWmX6Wrx7hpqSebEd9ggqmMRyYtGwgARgyBASj6K6h4p-ad1pPwtf4tXYjY8/exec';
 const IS_ADMIN = location.search.includes('admin'); // URL에 ?admin 붙이면 관리자
 const DAY_KR = ['일','월','화','수','목','금','토'];
 const DAYS = ['월','화','수','목','금','토','일'];
@@ -378,17 +378,15 @@ function renderCalendar(today){
       if(!d){ html+='<div class="cal-cell empty"></div>'; continue; }
       const iso=isoDate(d);
       const dow=d.getDay();
-      const holiday=KR_HOLIDAYS[iso];
       const isToday=iso===today;
       let cls='cal-cell';
       if(isToday) cls+=' today';
-      if(holiday) cls+=' holiday';
 
-      let inner=`<div class="cal-date ${dow===0?'sun':dow===6?'sat':''}">${d.getDate()}${holiday?`<span class="cal-holiday-name">${holiday}</span>`:''}</div>`;
+      let inner=`<div class="cal-date ${dow===0?'sun':dow===6?'sat':''}">${d.getDate()}</div>`;
 
       // 선생님별 근무 표시
       baseWork.forEach(bw=>{
-        const dayKr=holiday?'일':DAY_KR[dow];
+        const dayKr=DAY_KR[dow];
         const base=bw.schedule[dayKr];
         const sch=getSch(bw.teacher,iso);
         if(!base&&!sch) return;
@@ -425,12 +423,11 @@ function renderWeekTable(today){
   let html='<table><thead><tr><th class="teacher-col">선생님</th>';
   dates.forEach(d=>{
     const iso=isoDate(d), dow=d.getDay();
-    const isToday=iso===today, holiday=KR_HOLIDAYS[iso];
+    const isToday=iso===today;
     const cls=['date-header',isToday?'today-head':'',dow===0?'sun':dow===6?'sat':''].filter(Boolean).join(' ');
     html+=`<th><div class="${cls}">
       <div class="date-num">${pad2(d.getDate())}</div>
       <div class="date-day">${DAY_KR[dow]}</div>
-      ${holiday?`<div class="date-holiday">${holiday}</div>`:''}
     </div></th>`;
   });
   html+='</tr></thead><tbody>';
@@ -447,13 +444,11 @@ function renderWeekTable(today){
       const iso=isoDate(d), dow=d.getDay();
       const dayKr=DAY_KR[dow];
       const isToday=iso===today;
-      const holiday=KR_HOLIDAYS[iso];
-      const base=getBase(teacher, holiday?'일':dayKr);
+      const base=getBase(teacher, dayKr);
       const sch=getSch(teacher,iso);
 
       let cls='day-cell';
       if(isToday) cls+=' today-col';
-      if(holiday) cls+=' holiday-col';
       if(!base&&!sch) cls+=' off';
 
       let inner='<div class="work-content">';
@@ -482,14 +477,13 @@ function renderWeekTable(today){
 // ── 셀 편집 ──
 function openEdit(dateIso, teacher){
   const dow=new Date(dateIso+'T00:00:00').getDay();
-  const holiday=KR_HOLIDAYS[dateIso];
-  const base=getBase(teacher, holiday?'일':DAY_KR[dow]);
+  const base=getBase(teacher, DAY_KR[dow]);
   const sch=getSch(teacher,dateIso);
   document.getElementById('edit-date').value=dateIso;
   document.getElementById('edit-teacher').value=teacher;
   document.getElementById('edit-title').textContent=`${teacher} 근무 수정`;
   document.getElementById('edit-label').textContent=
-    `${dateIso} (${DAY_KR[dow]})${holiday?' · '+holiday:''}${base?' · 기본: '+base.start+'~'+base.end:''}`;
+    `${dateIso} (${DAY_KR[dow]})${base?' · 기본: '+base.start+'~'+base.end:''}`;
   document.getElementById('edit-start').value=sch?.start||'';
   document.getElementById('edit-end').value=sch?.end||'';
   document.getElementById('edit-note').value=sch?.note||'';
