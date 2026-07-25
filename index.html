@@ -53,7 +53,7 @@ td.day-cell.future-off{background:#FAFAF8;opacity:.5}
 .sun .date-num,.sun .date-day{color:var(--red)}
 .sat .date-num,.sat .date-day{color:var(--blue-m)}
 
-.work-content{display:flex;flex-direction:column;gap:2px}
+.work-content{display:flex;flex-direction:column;gap:2px;padding-left:12px}
 .wt-base{font-size:11px;color:var(--txt)}
 .wt-strike{text-decoration:line-through;color:#bbb;font-size:10px}
 .wt-change{font-size:11px;font-weight:600;color:var(--red)}
@@ -118,6 +118,12 @@ td.day-cell:hover .edit-hint{opacity:1}
 .cal-strike{font-size:9px;text-decoration:line-through;color:#bbb}
 .cal-change{font-size:10px;font-weight:600;color:var(--red)}
 .cal-note{font-size:9px;color:var(--txt2);font-style:italic;display:block}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px;vertical-align:middle;flex-shrink:0}
+.dot-base{background:var(--blue-m)}
+.dot-change{background:#E8A23D}
+.dot-extra{background:#F2CB4E}
+.cal-add{font-size:9px;color:#bbb;cursor:pointer;margin-top:2px;padding:1px 4px;border-radius:4px;display:inline-block}
+.cal-add:hover{background:#F0F6FF;color:var(--blue-m)}
 @media(max-width:768px){.cal{min-width:560px}.cal-cell{min-height:70px;padding:4px}}
 
 .loading{text-align:center;padding:60px;color:var(--txt2);font-size:13px}
@@ -139,6 +145,11 @@ td.day-cell:hover .edit-hint{opacity:1}
   <span class="nav-label" id="nav-label"></span>
   <button class="nav-btn" onclick="move(1)">→</button>
   <button class="today-btn" onclick="goToday()">오늘</button>
+  <div class="legend" style="display:flex;gap:10px;align-items:center;font-size:11px;color:var(--txt2)">
+    <span><span class="dot dot-base"></span>기본</span>
+    <span><span class="dot dot-change"></span>특이사항</span>
+    <span><span class="dot dot-extra"></span>추가·대체 출근</span>
+  </div>
   <div class="view-toggle">
     <button class="vt-btn active" id="vt-month" onclick="setView('month')">월간</button>
     <button class="vt-btn" id="vt-week" onclick="setView('week')">주간</button>
@@ -162,6 +173,10 @@ td.day-cell:hover .edit-hint{opacity:1}
     <p id="edit-label" style="font-size:12px;color:var(--txt2);margin-bottom:14px;font-weight:500"></p>
     <input type="hidden" id="edit-date">
     <input type="hidden" id="edit-teacher">
+    <div class="field" id="edit-teacher-wrap" style="display:none">
+      <label>선생님 *</label>
+      <select id="edit-teacher-sel"></select>
+    </div>
     <div class="field-row">
       <div class="field">
         <label>변경 시작 시간</label>
@@ -174,10 +189,19 @@ td.day-cell:hover .edit-hint{opacity:1}
     </div>
     <div class="field">
       <label>특이사항 메모</label>
-      <input id="edit-note" placeholder="예) 외출, 조기퇴근, 휴무">
+      <input id="edit-note" placeholder="예) 외출, 조기퇴근">
+    </div>
+    <div class="field" style="border-top:1px solid var(--bdr);padding-top:12px">
+      <label>대체 출근 <small style="font-weight:400;color:#aaa">이 날 쉬고 다른 날(들)에 나눠 출근하는 경우</small></label>
+      <div id="swap-rows"></div>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <button class="btn" onclick="addSwapRow()" style="font-size:12px;padding:5px 12px">+ 날짜 추가</button>
+        <button class="btn" onclick="markSwap()" style="font-size:12px;padding:5px 12px;color:#BA7517;border-color:#E8A23D;margin-left:auto">대체 등록</button>
+      </div>
     </div>
     <div class="macts">
       <button class="btn btn-danger" id="edit-del-btn" onclick="deleteEntry()" style="margin-right:auto;display:none">초기화</button>
+      <button class="btn" onclick="markOff()" style="color:var(--red);border-color:var(--red)">휴무 처리</button>
       <button class="btn" onclick="closeEdit()">취소</button>
       <button class="btn btn-p" onclick="saveEntry()">저장</button>
     </div>
@@ -390,19 +414,28 @@ function renderCalendar(today){
         const base=bw.schedule[dayKr];
         const sch=getSch(bw.teacher,iso);
         if(!base&&!sch) return;
+        const hasChange=sch&&(sch.start||sch.end||sch.note);
+        const isExtra=!base&&sch&&(sch.start||sch.end); // 기본 출근 아닌 날 출근
+        const dotCls=isExtra?'dot-extra':hasChange?'dot-change':'dot-base';
         let item=`<div class="cal-work" ${IS_ADMIN?`onclick="openEdit('${iso}','${bw.teacher}')"`:''}>`;
-        item+=`<span class="cal-teacher">${bw.teacher}</span> `;
-        if(sch&&(sch.start||sch.end)){
+        item+=`<span class="dot ${dotCls}"></span><span class="cal-teacher">${bw.teacher}</span> `;
+        const isOff=sch&&!sch.start&&!sch.end&&(sch.note==='휴무'||(sch.note||'').includes('대체'));
+        if(isOff){
+          if(base) item+=`<span class="cal-strike">${base.start}~${base.end}</span> `;
+          item+=`<span class="cal-change">${sch.note==='휴무'?'휴무':sch.note}</span>`;
+        } else if(sch&&(sch.start||sch.end)){
           if(base) item+=`<span class="cal-strike">${base.start}~${base.end}</span> `;
           item+=`<span class="cal-change">${sch.start||'?'}~${sch.end||'?'}</span>`;
+          if(sch.note) item+=`<span class="cal-note">${sch.note}</span>`;
         } else if(base){
           item+=`<span class="cal-time">${base.start}~${base.end}</span>`;
+          if(sch&&sch.note) item+=`<span class="cal-note">${sch.note}</span>`;
         }
-        if(sch&&sch.note) item+=`<span class="cal-note">${sch.note}</span>`;
         item+='</div>';
         inner+=item;
       });
 
+      if(IS_ADMIN) inner+=`<div class="cal-add" onclick="openAddWork('${iso}')">+ 추가</div>`;
       html+=`<div class="${cls}">${inner}</div>`;
     }
     html+='</div>';
@@ -451,8 +484,17 @@ function renderWeekTable(today){
       if(isToday) cls+=' today-col';
       if(!base&&!sch) cls+=' off';
 
+
+      const hasChangeW=sch&&(sch.start||sch.end||sch.note);
+      const isExtraW=!base&&sch&&(sch.start||sch.end);
+      const dotW=isExtraW?'dot-extra':hasChangeW?'dot-change':(base?'dot-base':'');
       let inner='<div class="work-content">';
-      if(sch&&(sch.start||sch.end)){
+      if(dotW) inner+=`<span class="dot ${dotW}" style="position:absolute;top:6px;left:5px"></span>`;
+      const isOff=sch&&!sch.start&&!sch.end&&(sch.note==='휴무'||(sch.note||'').includes('대체'));
+      if(isOff){
+        if(base) inner+=`<div class="wt-strike">${base.start}~${base.end}</div>`;
+        inner+=`<div class="wt-change">${sch.note==='휴무'?'휴무':sch.note}</div>`;
+      } else if(sch&&(sch.start||sch.end)){
         if(base) inner+=`<div class="wt-strike">${base.start}~${base.end}</div>`;
         inner+=`<div class="wt-change">${sch.start||'?'}~${sch.end||'?'}</div>`;
         if(sch.note) inner+=`<div class="wt-note">${sch.note}</div>`;
@@ -476,6 +518,7 @@ function renderWeekTable(today){
 
 // ── 셀 편집 ──
 function openEdit(dateIso, teacher){
+  document.getElementById('edit-teacher-wrap').style.display='none';
   const dow=new Date(dateIso+'T00:00:00').getDay();
   const base=getBase(teacher, DAY_KR[dow]);
   const sch=getSch(teacher,dateIso);
@@ -487,6 +530,7 @@ function openEdit(dateIso, teacher){
   document.getElementById('edit-start').value=sch?.start||'';
   document.getElementById('edit-end').value=sch?.end||'';
   document.getElementById('edit-note').value=sch?.note||'';
+  document.getElementById('swap-rows').innerHTML='';
   document.getElementById('edit-del-btn').style.display=sch?'':'none';
   document.getElementById('edit-overlay').classList.add('open');
 }
@@ -494,7 +538,16 @@ function closeEdit(){document.getElementById('edit-overlay').classList.remove('o
 
 function saveEntry(){
   const date=document.getElementById('edit-date').value;
-  const teacher=document.getElementById('edit-teacher').value;
+  let teacher=document.getElementById('edit-teacher').value;
+  if(!teacher){
+    teacher=document.getElementById('edit-teacher-sel').value;
+    if(teacher==='__new__'){
+      teacher=prompt('선생님 이름을 입력하세요');
+      if(!teacher) return;
+      teacher=teacher.trim();
+    }
+    if(!teacher){alert('선생님을 선택해주세요');return}
+  }
   const start=document.getElementById('edit-start').value;
   const end=document.getElementById('edit-end').value;
   const note=document.getElementById('edit-note').value.trim();
@@ -505,9 +558,81 @@ function saveEntry(){
   sheetPost('saveSchedule',{date,teacher,start,end,note});
 }
 
+function openAddWork(dateIso){
+  const dow=new Date(dateIso+'T00:00:00').getDay();
+  document.getElementById('edit-date').value=dateIso;
+  document.getElementById('edit-teacher').value='';
+  document.getElementById('edit-title').textContent='근무 추가';
+  document.getElementById('edit-label').textContent=`${dateIso} (${DAY_KR[dow]})`;
+  // 선생님 선택 필드 표시
+  const sel=document.getElementById('edit-teacher-sel');
+  sel.innerHTML=baseWork.map(b=>`<option value="${b.teacher}">${b.teacher}</option>`).join('')
+    +'<option value="__new__">직접 입력...</option>';
+  document.getElementById('edit-teacher-wrap').style.display='';
+  document.getElementById('edit-start').value='';
+  document.getElementById('edit-end').value='';
+  document.getElementById('edit-note').value='';
+  document.getElementById('swap-rows').innerHTML='';
+  document.getElementById('edit-del-btn').style.display='none';
+  document.getElementById('edit-overlay').classList.add('open');
+}
+
+function addSwapRow(){
+  const wrap=document.getElementById('swap-rows');
+  const row=document.createElement('div');
+  row.className='swap-row';
+  row.style.cssText='display:flex;gap:6px;align-items:center;margin-top:6px';
+  row.innerHTML=`
+    <input type="date" class="sw-date" style="flex:1.3;font:inherit;font-size:12px;padding:6px 8px;border:1px solid var(--bdr);border-radius:8px">
+    <input type="time" class="sw-start" style="flex:1;font:inherit;font-size:12px;padding:6px 6px;border:1px solid var(--bdr);border-radius:8px">
+    <span style="color:#aaa;font-size:11px">~</span>
+    <input type="time" class="sw-end" style="flex:1;font:inherit;font-size:12px;padding:6px 6px;border:1px solid var(--bdr);border-radius:8px">
+    <button onclick="this.closest('.swap-row').remove()" style="font:inherit;background:none;border:none;color:#bbb;cursor:pointer;font-size:14px;padding:0 4px">✕</button>
+  `;
+  wrap.appendChild(row);
+}
+
+function markSwap(){
+  const date=document.getElementById('edit-date').value;
+  let teacher=document.getElementById('edit-teacher').value;
+  if(!teacher) teacher=document.getElementById('edit-teacher-sel').value;
+  const rows=document.querySelectorAll('#swap-rows .swap-row');
+  const swaps=[];
+  rows.forEach(r=>{
+    const d=r.querySelector('.sw-date').value;
+    const s=r.querySelector('.sw-start').value;
+    const e=r.querySelector('.sw-end').value;
+    if(d&&(s||e)) swaps.push({date:d,start:s,end:e});
+  });
+  if(!swaps.length){alert('대체 날짜와 시간을 입력해주세요');return}
+  // 원래 날: 휴무 + 대체 날짜들 표시
+  const mdList=swaps.map(s=>s.date.slice(5).replace('-','/')).join(', ');
+  schedule=schedule.filter(s=>!(s.date===date&&s.teacher===teacher));
+  schedule.push({date,teacher,start:'',end:'',note:'→ '+mdList+' 대체'});
+  sheetPost('saveSchedule',{date,teacher,start:'',end:'',note:'→ '+mdList+' 대체'});
+  // 각 대체 날: 입력한 시간으로 추가 출근
+  const origMd=date.slice(5).replace('-','/');
+  swaps.forEach(sw=>{
+    schedule=schedule.filter(s=>!(s.date===sw.date&&s.teacher===teacher));
+    schedule.push({date:sw.date,teacher,start:sw.start,end:sw.end,note:origMd+' 대체 출근'});
+    sheetPost('saveSchedule',{date:sw.date,teacher,start:sw.start,end:sw.end,note:origMd+' 대체 출근'});
+  });
+  closeEdit(); render();
+}
+function markOff(){
+  const date=document.getElementById('edit-date').value;
+  let teacher=document.getElementById('edit-teacher').value;
+  if(!teacher) teacher=document.getElementById('edit-teacher-sel').value;
+  schedule=schedule.filter(s=>!(s.date===date&&s.teacher===teacher));
+  schedule.push({date,teacher,start:'',end:'',note:'휴무'});
+  closeEdit(); render();
+  sheetPost('saveSchedule',{date,teacher,start:'',end:'',note:'휴무'});
+}
+
 function deleteEntry(){
   const date=document.getElementById('edit-date').value;
-  const teacher=document.getElementById('edit-teacher').value;
+  let teacher=document.getElementById('edit-teacher').value;
+  if(!teacher) teacher=document.getElementById('edit-teacher-sel').value;
   schedule=schedule.filter(s=>!(s.date===date&&s.teacher===teacher));
   closeEdit(); render();
   sheetPost('deleteSchedule',{date,teacher});
