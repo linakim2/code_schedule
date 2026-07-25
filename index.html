@@ -194,7 +194,7 @@ td.day-cell:hover .edit-hint{opacity:1}
       <input id="edit-note" placeholder="예) 외출, 조기퇴근">
     </div>
     <div class="field" style="border-top:1px solid var(--bdr);padding-top:12px">
-      <label>대체 출근 <small style="font-weight:400;color:#aaa">이 날 쉬고 다른 날(들)에 나눠 출근하는 경우</small></label>
+      <label>대체 출근 <small style="font-weight:400;color:#aaa">위 변경 시간을 입력하면 이 날 그 시간만 근무, 비우면 완전 휴무</small></label>
       <div id="swap-rows"></div>
       <div style="display:flex;gap:8px;margin-top:6px">
         <button class="btn" onclick="addSwapRow()" style="font-size:12px;padding:5px 12px">+ 날짜 추가</button>
@@ -227,7 +227,7 @@ td.day-cell:hover .edit-hint{opacity:1}
 </div>
 
 <script>
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyOV1mO_V47OKNkzjzm8xRN1XIzxGIPjIp8XP85OYsaDCGM1nmaPlM6_w41Ye-0rk2cvQ/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzMzWl1Yrc8pBS75nO8GD9UQaOWRSyGuU-PT8bb8db5m6ckq0Ef1sFcCecOLX3WJ9Ax/exec';
 const IS_ADMIN = location.search.includes('admin'); // URL에 ?admin 붙이면 관리자
 const DAY_KR = ['일','월','화','수','목','금','토'];
 const DAYS = ['월','화','수','목','금','토','일'];
@@ -332,9 +332,27 @@ function setView(v){
 }
 function move(d){
   if(viewMode==='month'){
-    curMonth+=d; if(curMonth>11){curMonth=0;curYear++;} if(curMonth<0){curMonth=11;curYear--;}
+    let ny=curYear, nm=curMonth+d;
+    if(nm>11){nm=0;ny++;} if(nm<0){nm=11;ny--;}
+    if(!IS_ADMIN){
+      // 뷰어: 전월 ~ 다음달까지만
+      const now=new Date();
+      const minV=now.getFullYear()*12+now.getMonth()-1;
+      const maxV=now.getFullYear()*12+now.getMonth()+1;
+      const tgt=ny*12+nm;
+      if(tgt<minV||tgt>maxV) return;
+    }
+    curYear=ny; curMonth=nm;
   } else {
-    curWeekStart=new Date(curWeekStart); curWeekStart.setDate(curWeekStart.getDate()+d*7);
+    const nw=new Date(curWeekStart); nw.setDate(nw.getDate()+d*7);
+    if(!IS_ADMIN){
+      const now=new Date();
+      const min=new Date(now.getFullYear(),now.getMonth()-1,1);
+      const max=new Date(now.getFullYear(),now.getMonth()+2,0);
+      const we=new Date(nw); we.setDate(we.getDate()+6);
+      if(we<min||nw>max) return;
+    }
+    curWeekStart=nw;
   }
   render();
 }
@@ -414,7 +432,7 @@ function renderCalendar(today){
       let inner=`<div class="cal-date ${dow===0?'sun':dow===6?'sat':''}">${d.getDate()}</div>`;
 
       // 선생님별 근무 표시
-      const uniqTeachers=[...new Set(baseWork.map(b=>b.teacher))];
+      const uniqTeachers=[...new Set([...baseWork.map(b=>b.teacher),...schedule.filter(s=>s.date===iso).map(s=>s.teacher)])];
       uniqTeachers.forEach(tch=>{
         const bw={teacher:tch};
         const dayKr=DAY_KR[dow];
@@ -459,7 +477,7 @@ function renderWeekTable(today){
     const d=new Date(curWeekStart);
     for(let i=0;i<7;i++){dates.push(new Date(d));d.setDate(d.getDate()+1);}
   }
-  const teachers=[...new Set(baseWork.map(b=>b.teacher))];
+  const teachers=[...new Set([...baseWork.map(b=>b.teacher),...schedule.map(s=>s.teacher)])];
 
   let html='<table><thead><tr><th class="teacher-col">선생님</th>';
   dates.forEach(d=>{
@@ -601,10 +619,11 @@ function addSwapRow(){
   wrap.appendChild(row);
 }
 
-function markSwap(){
+async function markSwap(){
   const date=document.getElementById('edit-date').value;
   let teacher=document.getElementById('edit-teacher').value;
   if(!teacher) teacher=document.getElementById('edit-teacher-sel').value;
+  if(!teacher){alert('선생님을 확인해주세요');return}
   const rows=document.querySelectorAll('#swap-rows .swap-row');
   const swaps=[];
   rows.forEach(r=>{
@@ -613,20 +632,27 @@ function markSwap(){
     const e=r.querySelector('.sw-end').value;
     if(d&&(s||e)) swaps.push({date:d,start:s,end:e});
   });
-  if(!swaps.length){alert('대체 날짜와 시간을 입력해주세요');return}
-  // 원래 날: 휴무 + 대체 날짜들 표시
+  if(!swaps.length){alert('대체 날짜와 시간을 입력해주세요 (+ 날짜 추가 버튼으로 행을 만든 뒤 입력)');return}
+  // 원래 날: 변경 시간이 입력돼 있으면 그 시간으로 근무 + 나머지 대체 / 비어있으면 완전 휴무 대체
+  const oStart=document.getElementById('edit-start').value;
+  const oEnd=document.getElementById('edit-end').value;
+  const oNote=document.getElementById('edit-note').value.trim();
   const mdList=swaps.map(s=>s.date.slice(5).replace('-','/')).join(', ');
-  schedule=schedule.filter(s=>!(s.date===date&&s.teacher===teacher));
-  schedule.push({date,teacher,start:'',end:'',note:'→ '+mdList+' 대체'});
-  sheetPost('saveSchedule',{date,teacher,start:'',end:'',note:'→ '+mdList+' 대체'});
-  // 각 대체 날: 입력한 시간으로 추가 출근
   const origMd=date.slice(5).replace('-','/');
+  const origNote=(oNote?oNote+' · ':'')+'→ '+mdList+' 대체';
+  const origEntry={date,teacher,start:oStart||'',end:oEnd||'',note:origNote};
+  schedule=schedule.filter(s=>!(s.date===date&&s.teacher===teacher));
+  schedule.push(origEntry);
   swaps.forEach(sw=>{
     schedule=schedule.filter(s=>!(s.date===sw.date&&s.teacher===teacher));
     schedule.push({date:sw.date,teacher,start:sw.start,end:sw.end,note:origMd+' 대체 출근'});
-    sheetPost('saveSchedule',{date:sw.date,teacher,start:sw.start,end:sw.end,note:origMd+' 대체 출근'});
   });
   closeEdit(); render();
+  // 서버 저장은 순차 처리 (동시 요청 시 시트 충돌 방지)
+  await sheetPost('saveSchedule',origEntry);
+  for(const sw of swaps){
+    await sheetPost('saveSchedule',{date:sw.date,teacher,start:sw.start,end:sw.end,note:origMd+' 대체 출근'});
+  }
 }
 function markOff(){
   const date=document.getElementById('edit-date').value;
