@@ -93,6 +93,33 @@ td.day-cell:hover .edit-hint{opacity:1}
 .time-pair{display:flex;flex-direction:column;gap:2px}
 .time-pair input{font:inherit;font-size:10px;padding:3px 4px;border:1px solid var(--bdr);border-radius:5px;width:100%;text-align:center}
 
+
+/* 월간 달력 */
+.cal{background:var(--w);border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06);min-width:700px}
+.cal-head{display:grid;grid-template-columns:repeat(7,1fr);background:#FAFAF8;border-bottom:1px solid var(--bdr)}
+.cal-hd{padding:8px 4px;text-align:center;font-size:12px;font-weight:600;color:var(--txt2)}
+.cal-hd.sun{color:var(--red)}
+.cal-hd.sat{color:var(--blue-m)}
+.cal-week{display:grid;grid-template-columns:repeat(7,1fr);border-bottom:1px solid var(--bdr)}
+.cal-week:last-child{border-bottom:none}
+.cal-cell{border-right:1px solid var(--bdr);padding:6px;min-height:86px;font-size:11px;vertical-align:top}
+.cal-cell:last-child{border-right:none}
+.cal-cell.empty{background:#FAFAF8}
+.cal-cell.today{background:#EBF3FC}
+.cal-cell.holiday{background:#FFF5F5}
+.cal-date{font-size:12px;font-weight:600;margin-bottom:4px}
+.cal-date.sun{color:var(--red)}
+.cal-date.sat{color:var(--blue-m)}
+.cal-holiday-name{font-size:9px;color:var(--red);font-weight:600;margin-left:4px}
+.cal-work{margin-bottom:3px;line-height:1.5;border-radius:6px;padding:2px 4px;transition:background .1s}
+.cal-work:hover{background:#F5F9FF;cursor:pointer}
+.cal-teacher{font-weight:600;font-size:10px}
+.cal-time{font-size:10px;color:var(--txt2)}
+.cal-strike{font-size:9px;text-decoration:line-through;color:#bbb}
+.cal-change{font-size:10px;font-weight:600;color:var(--red)}
+.cal-note{font-size:9px;color:var(--txt2);font-style:italic;display:block}
+@media(max-width:768px){.cal{min-width:560px}.cal-cell{min-height:70px;padding:4px}}
+
 .loading{text-align:center;padding:60px;color:var(--txt2);font-size:13px}
 .section-title{font-size:11px;color:var(--txt2);font-weight:600;padding:6px 24px;background:#FAFAF8;border-bottom:1px solid var(--bdr)}
 </style>
@@ -211,6 +238,20 @@ function parseDate(s){
   const d=new Date(s); if(isNaN(d)) return String(s);
   return isoDate(d);
 }
+function parseTime(s){
+  if(!s) return '';
+  if(typeof s==='string'&&s.match(/^\d{1,2}:\d{2}$/)) return s.padStart(5,'0');
+  const d=new Date(s);
+  if(!isNaN(d)) return pad2(d.getHours())+':'+pad2(d.getMinutes());
+  return String(s);
+}
+function normTimes(schedule){
+  const out={};
+  Object.keys(schedule||{}).forEach(k=>{
+    out[k]={start:parseTime(schedule[k].start),end:parseTime(schedule[k].end)};
+  });
+  return out;
+}
 function getMonday(d){
   const day=d.getDay(), diff=d.getDate()-(day===0?6:day-1);
   const m=new Date(d); m.setDate(diff); m.setHours(0,0,0,0); return m;
@@ -247,8 +288,8 @@ async function load(){
   try{
     const res=await fetch(`${SCRIPT_URL}?action=allWork`);
     const json=await res.json();
-    baseWork=json.data.baseWork||[];
-    schedule=(json.data.schedule||[]).map(s=>({...s,date:parseDate(s.date)}));
+    baseWork=(json.data.baseWork||[]).map(b=>({...b,schedule:normTimes(b.schedule)}));
+    schedule=(json.data.schedule||[]).map(s=>({...s,date:parseDate(s.date),start:parseTime(s.start),end:parseTime(s.end)}));
     document.getElementById('loading').style.display='none';
     document.getElementById('main').style.display='';
     render();
@@ -296,17 +337,90 @@ function getSch(teacher,dateIso){
 }
 
 function render(){
-  const dates=getDates();
   const today=isoDate(new Date());
-  const teachers=baseWork.map(b=>b.teacher);
 
   if(viewMode==='month'){
     document.getElementById('nav-label').textContent=`${curYear}.${pad2(curMonth+1)}`;
+    renderCalendar(today);
   } else {
     const e=new Date(curWeekStart); e.setDate(e.getDate()+6);
     document.getElementById('nav-label').textContent=
       `${pad2(curWeekStart.getMonth()+1)}/${pad2(curWeekStart.getDate())} ~ ${pad2(e.getMonth()+1)}/${pad2(e.getDate())}`;
+    renderWeekTable(today);
   }
+}
+
+// ── 월간: 달력 그리드 (일~토) ──
+function renderCalendar(today){
+  const first=new Date(curYear,curMonth,1);
+  const last=new Date(curYear,curMonth+1,0);
+  const startPad=first.getDay(); // 일요일 시작
+  const totalDays=last.getDate();
+  const cells=[];
+  for(let i=0;i<startPad;i++) cells.push(null);
+  for(let d=1;d<=totalDays;d++) cells.push(new Date(curYear,curMonth,d));
+  while(cells.length%7!==0) cells.push(null);
+
+  let html='<div class="cal">';
+  // 요일 헤더
+  html+='<div class="cal-head">';
+  DAY_KR.forEach((d,i)=>{
+    const c=i===0?'sun':i===6?'sat':'';
+    html+=`<div class="cal-hd ${c}">${d}</div>`;
+  });
+  html+='</div>';
+
+  // 주 단위
+  for(let w=0;w<cells.length/7;w++){
+    html+='<div class="cal-week">';
+    for(let i=0;i<7;i++){
+      const d=cells[w*7+i];
+      if(!d){ html+='<div class="cal-cell empty"></div>'; continue; }
+      const iso=isoDate(d);
+      const dow=d.getDay();
+      const holiday=KR_HOLIDAYS[iso];
+      const isToday=iso===today;
+      let cls='cal-cell';
+      if(isToday) cls+=' today';
+      if(holiday) cls+=' holiday';
+
+      let inner=`<div class="cal-date ${dow===0?'sun':dow===6?'sat':''}">${d.getDate()}${holiday?`<span class="cal-holiday-name">${holiday}</span>`:''}</div>`;
+
+      // 선생님별 근무 표시
+      baseWork.forEach(bw=>{
+        const dayKr=holiday?'일':DAY_KR[dow];
+        const base=bw.schedule[dayKr];
+        const sch=getSch(bw.teacher,iso);
+        if(!base&&!sch) return;
+        let item=`<div class="cal-work" ${IS_ADMIN?`onclick="openEdit('${iso}','${bw.teacher}')"`:''}>`;
+        item+=`<span class="cal-teacher">${bw.teacher}</span> `;
+        if(sch&&(sch.start||sch.end)){
+          if(base) item+=`<span class="cal-strike">${base.start}~${base.end}</span> `;
+          item+=`<span class="cal-change">${sch.start||'?'}~${sch.end||'?'}</span>`;
+        } else if(base){
+          item+=`<span class="cal-time">${base.start}~${base.end}</span>`;
+        }
+        if(sch&&sch.note) item+=`<span class="cal-note">${sch.note}</span>`;
+        item+='</div>';
+        inner+=item;
+      });
+
+      html+=`<div class="${cls}">${inner}</div>`;
+    }
+    html+='</div>';
+  }
+  html+='</div>';
+  document.getElementById('table-container').innerHTML=html;
+}
+
+// ── 주간: 기존 테이블 ──
+function renderWeekTable(today){
+  const dates=[];
+  {
+    const d=new Date(curWeekStart);
+    for(let i=0;i<7;i++){dates.push(new Date(d));d.setDate(d.getDate()+1);}
+  }
+  const teachers=baseWork.map(b=>b.teacher);
 
   let html='<table><thead><tr><th class="teacher-col">선생님</th>';
   dates.forEach(d=>{
@@ -465,8 +579,35 @@ function adminLogin(){
   location.search='?admin';
 }
 
+async function verifyAdmin(){
+  let pw=sessionStorage.getItem('admin_pw');
+  if(!pw){
+    pw=prompt('관리자 비밀번호를 입력하세요');
+    if(pw===null){ location.search=''; return false; }
+    sessionStorage.setItem('admin_pw',pw);
+  }
+  if(SCRIPT_URL==='YOUR_APPS_SCRIPT_URL_HERE') return true;
+  try{
+    const res=await fetch(SCRIPT_URL,{
+      method:'POST',redirect:'follow',
+      headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({password:pw,action:'verify',data:{}})
+    });
+    const json=await res.json();
+    if(json.error==='unauthorized'){
+      sessionStorage.removeItem('admin_pw');
+      alert('비밀번호가 틀렸습니다.');
+      location.search='';
+      return false;
+    }
+    return true;
+  }catch(e){ return true; }
+}
+
 if(IS_ADMIN){
-  document.getElementById('base-setting-btn').style.display='';
+  verifyAdmin().then(ok=>{
+    if(ok) document.getElementById('base-setting-btn').style.display='';
+  });
 } else {
   document.getElementById('admin-login-btn').style.display='';
   const style=document.createElement('style');
