@@ -314,7 +314,7 @@ async function load(){
   try{
     const res=await fetch(`${SCRIPT_URL}?action=allWork`);
     const json=await res.json();
-    baseWork=(json.data.baseWork||[]).map(b=>({...b,schedule:normTimes(b.schedule)}));
+    baseWork=(json.data.baseWork||[]).map(b=>({...b,effectiveDate:parseDate(b.effectiveDate||''),schedule:normTimes(b.schedule)}));
     schedule=(json.data.schedule||[]).map(s=>({...s,date:parseDate(s.date),start:parseTime(s.start),end:parseTime(s.end)}));
     document.getElementById('loading').style.display='none';
     document.getElementById('main').style.display='';
@@ -354,9 +354,12 @@ function getDates(){
   }
 }
 
-function getBase(teacher,dayKr){
-  const b=baseWork.find(x=>x.teacher===teacher);
-  return b?.schedule[dayKr]||null;
+function getBase(teacher,dayKr,dateIso){
+  // 해당 날짜에 유효한 버전 선택 (적용일 <= 날짜 중 가장 최근)
+  const versions=baseWork.filter(x=>x.teacher===teacher&&(!x.effectiveDate||!dateIso||x.effectiveDate<=dateIso));
+  if(!versions.length) return null;
+  versions.sort((a,b)=>(a.effectiveDate||'').localeCompare(b.effectiveDate||''));
+  return versions[versions.length-1].schedule[dayKr]||null;
 }
 function getSch(teacher,dateIso){
   return schedule.find(s=>s.date===dateIso&&s.teacher===teacher)||null;
@@ -411,10 +414,12 @@ function renderCalendar(today){
       let inner=`<div class="cal-date ${dow===0?'sun':dow===6?'sat':''}">${d.getDate()}</div>`;
 
       // 선생님별 근무 표시
-      baseWork.forEach(bw=>{
+      const uniqTeachers=[...new Set(baseWork.map(b=>b.teacher))];
+      uniqTeachers.forEach(tch=>{
+        const bw={teacher:tch};
         const dayKr=DAY_KR[dow];
-        const base=bw.schedule[dayKr];
-        const sch=getSch(bw.teacher,iso);
+        const base=getBase(tch,dayKr,iso);
+        const sch=getSch(tch,iso);
         if(!base&&!sch) return;
         const hasChange=sch&&(sch.start||sch.end||sch.note);
         const isVacation=sch&&!sch.start&&!sch.end&&sch.note==='휴무';
@@ -454,7 +459,7 @@ function renderWeekTable(today){
     const d=new Date(curWeekStart);
     for(let i=0;i<7;i++){dates.push(new Date(d));d.setDate(d.getDate()+1);}
   }
-  const teachers=baseWork.map(b=>b.teacher);
+  const teachers=[...new Set(baseWork.map(b=>b.teacher))];
 
   let html='<table><thead><tr><th class="teacher-col">선생님</th>';
   dates.forEach(d=>{
@@ -480,7 +485,7 @@ function renderWeekTable(today){
       const iso=isoDate(d), dow=d.getDay();
       const dayKr=DAY_KR[dow];
       const isToday=iso===today;
-      const base=getBase(teacher, dayKr);
+      const base=getBase(teacher, dayKr, iso);
       const sch=getSch(teacher,iso);
 
       let cls='day-cell';
@@ -524,7 +529,7 @@ function renderWeekTable(today){
 function openEdit(dateIso, teacher){
   document.getElementById('edit-teacher-wrap').style.display='none';
   const dow=new Date(dateIso+'T00:00:00').getDay();
-  const base=getBase(teacher, DAY_KR[dow]);
+  const base=getBase(teacher, DAY_KR[dow], dateIso);
   const sch=getSch(teacher,dateIso);
   document.getElementById('edit-date').value=dateIso;
   document.getElementById('edit-teacher').value=teacher;
@@ -644,23 +649,28 @@ function deleteEntry(){
 
 // ── 기본 근무 설정 ──
 function openBaseModal(){
-  // 기존 선생님 + 빈 칸 1줄 추가
-  const teachers=[...new Set(baseWork.map(b=>b.teacher))];
-  if(!teachers.length) teachers.push('');
-  teachers.push('');
+  // 버전(선생님+적용일)별 블록 + 빈 블록 1개
+  const blocks=[...baseWork].sort((a,b)=>
+    a.teacher.localeCompare(b.teacher)||(a.effectiveDate||'').localeCompare(b.effectiveDate||''));
+  blocks.push({teacher:'',effectiveDate:'',schedule:{}});
 
   let html='';
-  teachers.forEach((t,ti)=>{
+  blocks.forEach(b=>{
     html+=`<div style="margin-bottom:16px;border:1px solid var(--bdr);border-radius:10px;padding:12px">
-      <div class="field" style="margin-bottom:10px">
-        <label>선생님 이름</label>
-        <input class="base-teacher" value="${t}" placeholder="예) 김연정T">
+      <div style="display:flex;gap:10px;margin-bottom:10px">
+        <div class="field" style="flex:1;margin-bottom:0">
+          <label>선생님 이름</label>
+          <input class="base-teacher" value="${b.teacher}" placeholder="예) 김연정T">
+        </div>
+        <div class="field" style="flex:1;margin-bottom:0">
+          <label>적용 시작일 <small style="font-weight:400;color:#aaa">비우면 처음부터</small></label>
+          <input class="base-effective" type="date" value="${b.effectiveDate||''}">
+        </div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">`;
     DAYS.forEach(day=>{
-      const b=baseWork.find(x=>x.teacher===t);
-      const s=b?.schedule[day]?.start||'';
-      const e=b?.schedule[day]?.end||'';
+      const s=b.schedule[day]?.start||'';
+      const e=b.schedule[day]?.end||'';
       html+=`<div>
         <div style="font-size:10px;font-weight:600;text-align:center;color:var(--txt2);margin-bottom:4px">${day}</div>
         <input class="base-start" data-day="${day}" type="time" value="${s}" style="font-size:10px;padding:3px;border:1px solid var(--bdr);border-radius:5px;width:100%;font-family:inherit">
@@ -669,7 +679,8 @@ function openBaseModal(){
     });
     html+='</div></div>';
   });
-  document.getElementById('base-form').innerHTML=html;
+  document.getElementById('base-form').innerHTML=html
+    +'<p style="font-size:11px;color:var(--txt2);margin-top:4px">기본시간이 중간에 바뀌면 같은 선생님으로 새 블록을 추가하고 적용 시작일을 지정하세요. 이전 이력은 그대로 유지됩니다.</p>';
   document.getElementById('base-overlay').classList.add('open');
 }
 function closeBaseModal(){document.getElementById('base-overlay').classList.remove('open')}
@@ -678,20 +689,23 @@ async function saveBaseAll(){
   const rows=document.querySelectorAll('#base-form > div');
   const newBase=[];
   rows.forEach(row=>{
-    const teacher=row.querySelector('.base-teacher').value.trim();
+    const tEl=row.querySelector('.base-teacher');
+    if(!tEl) return;
+    const teacher=tEl.value.trim();
     if(!teacher) return;
+    const effectiveDate=row.querySelector('.base-effective').value||'';
     const schedule={};
     DAYS.forEach(day=>{
       const s=row.querySelector(`.base-start[data-day="${day}"]`).value;
       const e=row.querySelector(`.base-end[data-day="${day}"]`).value;
       if(s||e) schedule[day]={start:s,end:e};
     });
-    newBase.push({teacher,schedule});
+    newBase.push({teacher,effectiveDate,schedule});
   });
   baseWork=newBase;
   closeBaseModal(); render();
   for(const b of newBase){
-    await sheetPost('saveBaseWork',{teacher:b.teacher,schedule:b.schedule});
+    await sheetPost('saveBaseWork',{teacher:b.teacher,effectiveDate:b.effectiveDate,schedule:b.schedule});
   }
 }
 
