@@ -128,7 +128,23 @@ td.day-cell:hover .edit-hint{opacity:1}
 .cal-add:hover{background:#F0F6FF;color:var(--blue-m)}
 @media(max-width:768px){.cal{min-width:560px}.cal-cell{min-height:70px;padding:4px}}
 
-.loading{text-align:center;padding:60px;color:var(--txt2);font-size:13px}
+.loading-overlay{
+  display:none;position:fixed;inset:0;
+  background:rgba(247,246,243,.92);
+  z-index:9999;
+  flex-direction:column;align-items:center;justify-content:center;gap:16px;
+  backdrop-filter:blur(2px);
+}
+.loading-overlay.show{display:flex}
+.loading-spinner{
+  width:44px;height:44px;
+  border:3.5px solid var(--bdr);
+  border-top-color:var(--blue-m);
+  border-radius:50%;
+  animation:spin .6s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{font-size:13px;color:var(--txt2);font-weight:400;letter-spacing:.3px}
 .section-title{font-size:11px;color:var(--txt2);font-weight:600;padding:6px 24px;background:#FAFAF8;border-bottom:1px solid var(--bdr)}
 </style>
 </head>
@@ -159,7 +175,10 @@ td.day-cell:hover .edit-hint{opacity:1}
   </div>
 </div>
 
-<div id="loading" class="loading">데이터 불러오는 중...</div>
+<div class="loading-overlay show" id="loading">
+  <div class="loading-spinner"></div>
+  <div class="loading-text">당직표 불러오는 중...</div>
+</div>
 <div id="main" style="display:none">
   <div class="table-wrap">
     <div id="table-container"></div>
@@ -341,11 +360,11 @@ async function load(){
     const json=await res.json();
     baseWork=(json.data.baseWork||[]).map(b=>({...b,effectiveDate:parseDate(b.effectiveDate||''),schedule:normTimes(b.schedule)}));
     schedule=(json.data.schedule||[]).map(s=>({...s,date:parseDate(s.date),start:parseTime(s.start),end:parseTime(s.end)}));
-    document.getElementById('loading').style.display='none';
+    document.getElementById('loading').classList.remove('show');
     document.getElementById('main').style.display='';
     render();
   }catch(e){
-    document.getElementById('loading').textContent='로딩 실패. SCRIPT_URL을 확인해주세요.';
+    document.getElementById('loading').querySelector('.loading-text').textContent='로딩 실패. SCRIPT_URL을 확인해주세요.';
   }
 }
 
