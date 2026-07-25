@@ -227,7 +227,7 @@ td.day-cell:hover .edit-hint{opacity:1}
 </div>
 
 <script>
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwuJgav_q0lzSYIlbWYEXG7QQCRlWrlxCOWa9qLsW4Aezfegj7r41TvfVlTL3_JR_kCVw/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwT18Ww9XySqgDCG_hND5nkWPAi1Tm-69q5ixrjnXvUays3bBt2FJXAxcgOf9YvuY4p5w/exec';
 const IS_ADMIN = location.search.includes('admin'); // URL에 ?admin 붙이면 관리자
 const DAY_KR = ['일','월','화','수','목','금','토'];
 const DAYS = ['월','화','수','목','금','토','일'];
@@ -316,6 +316,11 @@ async function sheetPost(action, data){
       alert('저장이 반영되지 않았습니다. Apps_Script_당직표.gs 최신본으로 재배포해주세요.');
       return false;
     }
+    // 배포 버전 검증: replaced/removed 카운트가 없으면 구버전
+    if(json.data && (json.data.saved||json.data.deleted) && json.data.replaced===undefined && json.data.removed===undefined){
+      alert('배포된 Apps Script가 구버전(v2.1 미만)입니다.\n코드 저장만으로는 반영되지 않습니다.\n배포 → 배포 관리 → ✏️ → 버전: "새 버전" → 배포 를 해주세요.');
+    }
+    console.log('[sheetPost]',action,json.data);
     return true;
   }
   catch(e){
