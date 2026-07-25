@@ -103,7 +103,7 @@ td.day-cell:hover .edit-hint{opacity:1}
   <h1>CODE3 근무 당직표</h1>
   <div class="header-btns">
     <button class="base-btn" id="base-setting-btn" onclick="openBaseModal()" style="display:none">⚙ 기본 근무 설정</button>
-    
+    <button class="base-btn" id="admin-login-btn" onclick="adminLogin()" style="display:none">🔐 관리자</button>
   </div>
 </header>
 
@@ -458,9 +458,17 @@ async function saveBaseAll(){
   }
 }
 
+function adminLogin(){
+  const pw=prompt('관리자 비밀번호를 입력하세요');
+  if(pw===null) return;
+  sessionStorage.setItem('admin_pw',pw);
+  location.search='?admin';
+}
+
 if(IS_ADMIN){
   document.getElementById('base-setting-btn').style.display='';
 } else {
+  document.getElementById('admin-login-btn').style.display='';
   const style=document.createElement('style');
   style.textContent='td.day-cell{cursor:default}td.day-cell:hover{background:inherit}';
   document.head.appendChild(style);
