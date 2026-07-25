@@ -122,6 +122,7 @@ td.day-cell:hover .edit-hint{opacity:1}
 .dot-base{background:var(--blue-m)}
 .dot-change{background:#E8A23D}
 .dot-extra{background:#F2CB4E}
+.dot-off{background:#E05252}
 .cal-add{font-size:9px;color:#bbb;cursor:pointer;margin-top:2px;padding:1px 4px;border-radius:4px;display:inline-block}
 .cal-add:hover{background:#F0F6FF;color:var(--blue-m)}
 @media(max-width:768px){.cal{min-width:560px}.cal-cell{min-height:70px;padding:4px}}
@@ -148,6 +149,7 @@ td.day-cell:hover .edit-hint{opacity:1}
   <div class="legend" style="display:flex;gap:10px;align-items:center;font-size:11px;color:var(--txt2)">
     <span><span class="dot dot-base"></span>기본</span>
     <span><span class="dot dot-change"></span>특이사항</span>
+    <span><span class="dot dot-off"></span>휴무</span>
     <span><span class="dot dot-extra"></span>추가·대체 출근</span>
   </div>
   <div class="view-toggle">
@@ -415,8 +417,9 @@ function renderCalendar(today){
         const sch=getSch(bw.teacher,iso);
         if(!base&&!sch) return;
         const hasChange=sch&&(sch.start||sch.end||sch.note);
+        const isVacation=sch&&!sch.start&&!sch.end&&sch.note==='휴무';
         const isExtra=!base&&sch&&(sch.start||sch.end); // 기본 출근 아닌 날 출근
-        const dotCls=isExtra?'dot-extra':hasChange?'dot-change':'dot-base';
+        const dotCls=isVacation?'dot-off':isExtra?'dot-extra':hasChange?'dot-change':'dot-base';
         let item=`<div class="cal-work" ${IS_ADMIN?`onclick="openEdit('${iso}','${bw.teacher}')"`:''}>`;
         item+=`<span class="dot ${dotCls}"></span><span class="cal-teacher">${bw.teacher}</span> `;
         const isOff=sch&&!sch.start&&!sch.end&&(sch.note==='휴무'||(sch.note||'').includes('대체'));
@@ -486,8 +489,9 @@ function renderWeekTable(today){
 
 
       const hasChangeW=sch&&(sch.start||sch.end||sch.note);
+      const isVacationW=sch&&!sch.start&&!sch.end&&sch.note==='휴무';
       const isExtraW=!base&&sch&&(sch.start||sch.end);
-      const dotW=isExtraW?'dot-extra':hasChangeW?'dot-change':(base?'dot-base':'');
+      const dotW=isVacationW?'dot-off':isExtraW?'dot-extra':hasChangeW?'dot-change':(base?'dot-base':'');
       let inner='<div class="work-content">';
       if(dotW) inner+=`<span class="dot ${dotW}" style="position:absolute;top:6px;left:5px"></span>`;
       const isOff=sch&&!sch.start&&!sch.end&&(sch.note==='휴무'||(sch.note||'').includes('대체'));
